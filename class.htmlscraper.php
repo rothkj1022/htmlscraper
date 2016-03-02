@@ -6,7 +6,7 @@
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 *
-* @version 0.0.1
+* @version 0.0.2
 * @package HtmlScraper
 * @author Kevin Roth
 *
@@ -30,6 +30,8 @@ class HtmlScraper {
 
 	public function fetchContent() {
 		if ($html = @file_get_contents($this->url)) {
+			return $html;
+		} else if ($html = $this->getContents($this->url)) {
 			return $html;
 		}
 		return false;
@@ -125,5 +127,60 @@ class HtmlScraper {
 		$rss .= '	</channel>'."\n".
 			'</rss>'."\n";
 		return $rss;
+	}
+
+	// get remote file contents
+	private function getContents($uri, $charLimit = 0) {
+		$uri = urldecode($uri);
+		$uri = str_replace(' ', '%20', $uri);
+		$theContent = '';
+
+		$writefn = function($ch, $chunk) {
+			global $theContent, $charLimit;
+
+			$len = strlen($theContent) + strlen($chunk);
+			if ($len >= $charLimit ) {
+				$theContent .= substr($chunk, 0, $charLimit-strlen($theContent));
+				//echo strlen($theContent) , ' ', $theContent;
+				$theContent = $theContent;
+				return -1;
+			}
+
+			$theContent .= $chunk;
+			return strlen($chunk);
+		};
+
+		$userAgent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko';
+		$ch = curl_init( $uri );
+		curl_setopt($ch, CURLOPT_HEADER, false); // return headers
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // follow redirects
+		curl_setopt($ch, CURLOPT_ENCODING, ''); // empty string means handle all encodings
+		curl_setopt($ch, CURLOPT_USERAGENT, $userAgent); // who am i
+		curl_setopt($ch, CURLOPT_AUTOREFERER, true); // set referer on redirect
+		curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // timeout on connect
+		curl_setopt($ch, CURLOPT_TIMEOUT, 10); // timeout on response
+		curl_setopt($ch, CURLOPT_MAXREDIRS, 10); // stop after 10 redirects
+		curl_setopt($ch, CURLOPT_NOBODY, false); // only get the headers
+		curl_setopt($ch, CURLOPT_FILETIME, true); //retrieve the file modification date
+		curl_setopt($ch, CURLOPT_WRITEFUNCTION, $writefn);
+		if ($charLimit > 0) {
+			curl_setopt($ch, CURLOPT_RANGE, '0-'.$charLimit);
+			curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
+		} else {
+			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // return string instead of outputting directly to browser
+		}
+
+		if ($result = curl_exec( $ch )) {
+			$headers = curl_getinfo( $ch );
+			if ($charLimit == 0) {
+				$theContent = $result;
+			}
+		} else {
+			$err = curl_errno( $ch );
+			$errmsg = curl_error( $ch );
+		}
+		curl_close( $ch );
+
+		return $theContent;
 	}
 }
